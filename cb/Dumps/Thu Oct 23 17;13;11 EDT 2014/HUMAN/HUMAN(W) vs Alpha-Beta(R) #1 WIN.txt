@@ -1,0 +1,9 @@
+HUMAN (W) played 3 3 2 3
+RWRWR
+WRWRW
+RWR.R
+WRWWW
+RWRWR
+WRWRW
+[AWAY 1 GAME_ON]
+HUMAN won. Alpha-Beta DQd

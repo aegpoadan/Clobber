@@ -1,0 +1,130 @@
+Random+ (W) played 1 1 1 0
+RWRWR
+WRWRW
+RWRWR
+WRWRW
+W.RWR
+WRWRW
+[AWAY 1 GAME_ON]
+HUMAN (R) played 2 3 2 2
+RWRWR
+WRWRW
+RWRWR
+WRR.W
+W.RWR
+WRWRW
+[HOME 2 GAME_ON]
+Random+ (W) played 1 3 0 3
+RWRWR
+WRWRW
+RWRWR
+WRR.W
+W.R.R
+WRWWW
+[AWAY 3 GAME_ON]
+HUMAN (R) played 1 2 0 2
+RWRWR
+WRWRW
+RWRWR
+WRR.W
+W...R
+WRRWW
+[HOME 4 GAME_ON]
+Random+ (W) played 4 0 3 0
+RWRWR
+.RWRW
+WWRWR
+WRR.W
+W...R
+WRRWW
+[AWAY 5 GAME_ON]
+HUMAN (R) played 2 1 2 0
+RWRWR
+.RWRW
+WWRWR
+R.R.W
+W...R
+WRRWW
+[HOME 6 GAME_ON]
+Random+ (W) played 4 4 4 3
+RWRWR
+.RWW.
+WWRWR
+R.R.W
+W...R
+WRRWW
+[AWAY 7 GAME_ON]
+HUMAN (R) played 3 2 4 2
+RWRWR
+.RRW.
+WW.WR
+R.R.W
+W...R
+WRRWW
+[HOME 8 GAME_ON]
+Random+ (W) played 1 0 2 0
+RWRWR
+.RRW.
+WW.WR
+W.R.W
+....R
+WRRWW
+[AWAY 9 GAME_ON]
+HUMAN (R) played 3 4 2 4
+RWRWR
+.RRW.
+WW.W.
+W.R.R
+....R
+WRRWW
+[HOME 10 GAME_ON]
+Random+ (W) played 5 1 4 1
+R.RWR
+.WRW.
+WW.W.
+W.R.R
+....R
+WRRWW
+[AWAY 11 GAME_ON]
+HUMAN (R) played 1 4 0 4
+R.RWR
+.WRW.
+WW.W.
+W.R.R
+.....
+WRRWR
+[HOME 12 GAME_ON]
+Random+ (W) played 4 1 4 2
+R.RWR
+..WW.
+WW.W.
+W.R.R
+.....
+WRRWR
+[AWAY 13 GAME_ON]
+HUMAN (R) played 0 2 0 3
+R.RWR
+..WW.
+WW.W.
+W.R.R
+.....
+WR.RR
+[HOME 14 GAME_ON]
+Random+ (W) played 5 3 5 2
+R.W.R
+..WW.
+WW.W.
+W.R.R
+.....
+WR.RR
+[AWAY 15 GAME_ON]
+HUMAN (R) played 0 1 0 0
+R.W.R
+..WW.
+WW.W.
+W.R.R
+.....
+R..RR
+[HOME 16 AWAY_WIN]
+HUMAN (R) (9971.954000 seconds remaining) won.
+Random+ had 359.996000 seconds remaining.
