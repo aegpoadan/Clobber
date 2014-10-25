@@ -21,12 +21,12 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 			super(m.row1, m.col1, m.row2, m.col2);
 			score = m.score;
 		}
-		public void set(int r1, int c1, int r2, int c2, double s)
+		public void set(ClobberMove mv, double s)
 		{
-			row1 = r1;
-			col1 = c1;
-			row2 = r2;
-			col2 = c2;
+			row1 = mv.row1;
+			col1 = mv.col1;
+			row2 = mv.row2;
+			col2 = mv.col2;
 			score = s;
 		}
 		public void set(double s) {
@@ -39,7 +39,7 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 	public static final int MAX_SCORE = 10000;
 	public static final int MAX_DEPTH = 50;
 	private ScoredClobberMove[] mvStack;
-	public int depthLimit = 6;
+	public int depthLimit = 7;
 	
 	public AlphaBetaClobberPlayer(String n) {
 		super(n, new ClobberState(), false);
@@ -66,8 +66,6 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 	private int checkDiagonals (ClobberState board, char who, int score,
 						   int r, int c) {
 		// Check to see there're allied pawns at diagonals
-		
-		score++;
 		score = hasPawn(board,who,r-1,c-1)?score+1:score;
 		score = hasPawn(board,who,r+1,c-1)?score+1:score;
 		score = hasPawn(board,who,r+1,c+1)?score+1:score;
@@ -87,18 +85,22 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 				if (board.board[r][c] == who) {
 					if (hasPawn(board, opponent, r-1, c)){
 						valid = true;
+						score++;
 						score = checkDiagonals(board, who, score, r, c);
 					}
 					if (hasPawn(board, opponent, r+1, c)){
 						valid = true;
+						score++;
 						score = checkDiagonals(board, who, score, r, c);
 					}
 					if (hasPawn(board, opponent, r, c+1)){
 						valid = true;
+						score++;
 						score = checkDiagonals(board, who, score, r, c);
 					} 
 					if (hasPawn(board, opponent, r, c-1)){
 						valid = true;
+						score++;
 						score = checkDiagonals(board, who, score, r, c);
 					}
 					if (valid) {
@@ -223,13 +225,9 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 
 				// Check out the results, relative to what we've seen before
 				if (toMaximize && nextMove.score > bestMove.score) {
-					bestMove = mv;
-					bestMove.set(nextMove.score);
-					mvStack[currDepth] = bestMove;//??????
+					bestMove.set(mv, nextMove.score);
 				} else if (!toMaximize && nextMove.score < bestMove.score) {
-					bestMove = mv;
-					bestMove.set(nextMove.score);
-					mvStack[currDepth] = bestMove;//??????
+					bestMove.set(mv, nextMove.score);
 				}
 
 				// Update alpha and beta. Perform pruning, if possible.

@@ -1,0 +1,170 @@
+HUMAN (W) played 1 1 0 1
+RWRWR
+WRWRW
+RWRWR
+WRWRW
+R.RWR
+WWWRW
+[AWAY 1 GAME_ON]
+Alpha-Beta (R) played 1 2 1 3
+RWRWR
+WRWRW
+RWRWR
+WRWRW
+R..RR
+WWWRW
+[HOME 2 GAME_ON]
+HUMAN (W) played 0 4 0 3
+RWRWR
+WRWRW
+RWRWR
+WRWRW
+R..RR
+WWWW.
+[AWAY 3 GAME_ON]
+Alpha-Beta (R) played 2 1 2 2
+RWRWR
+WRWRW
+RWRWR
+W.RRW
+R..RR
+WWWW.
+[HOME 4 GAME_ON]
+HUMAN (W) played 5 3 5 4
+RWR.W
+WRWRW
+RWRWR
+W.RRW
+R..RR
+WWWW.
+[AWAY 5 GAME_ON]
+Alpha-Beta (R) played 3 2 4 2
+RWR.W
+WRRRW
+RW.WR
+W.RRW
+R..RR
+WWWW.
+[HOME 6 GAME_ON]
+HUMAN (W) played 2 4 3 4
+RWR.W
+WRRRW
+RW.WW
+W.RR.
+R..RR
+WWWW.
+[AWAY 7 GAME_ON]
+Alpha-Beta (R) played 1 3 0 3
+RWR.W
+WRRRW
+RW.WW
+W.RR.
+R...R
+WWWR.
+[HOME 8 GAME_ON]
+HUMAN (W) played 2 0 1 0
+RWR.W
+WRRRW
+RW.WW
+..RR.
+W...R
+WWWR.
+[AWAY 9 GAME_ON]
+Alpha-Beta (R) played 5 2 5 1
+RR..W
+WRRRW
+RW.WW
+..RR.
+W...R
+WWWR.
+[HOME 10 GAME_ON]
+HUMAN (W) played 4 0 3 0
+RR..W
+.RRRW
+WW.WW
+..RR.
+W...R
+WWWR.
+[AWAY 11 GAME_ON]
+Alpha-Beta (R) played 0 3 0 2
+RR..W
+.RRRW
+WW.WW
+..RR.
+W...R
+WWR..
+[HOME 12 GAME_ON]
+HUMAN (W) played 0 1 0 2
+RR..W
+.RRRW
+WW.WW
+..RR.
+W...R
+W.W..
+[AWAY 13 GAME_ON]
+Alpha-Beta (R) played 2 3 3 3
+RR..W
+.RRRW
+WW.RW
+..R..
+W...R
+W.W..
+[HOME 14 GAME_ON]
+HUMAN (W) played 3 4 3 3
+RR..W
+.RRRW
+WW.W.
+..R..
+W...R
+W.W..
+[AWAY 15 GAME_ON]
+Alpha-Beta (R) played 4 1 3 1
+RR..W
+..RRW
+WR.W.
+..R..
+W...R
+W.W..
+[HOME 16 GAME_ON]
+HUMAN (W) played 3 3 4 3
+RR..W
+..RWW
+WR...
+..R..
+W...R
+W.W..
+[AWAY 17 GAME_ON]
+Alpha-Beta (R) played 4 2 4 3
+RR..W
+...RW
+WR...
+..R..
+W...R
+W.W..
+[HOME 18 GAME_ON]
+HUMAN (W) played 3 0 3 1
+RR..W
+...RW
+.W...
+..R..
+W...R
+W.W..
+[AWAY 19 GAME_ON]
+Alpha-Beta (R) played 4 3 4 4
+RR..W
+....R
+.W...
+..R..
+W...R
+W.W..
+[HOME 20 GAME_ON]
+HUMAN (W) played 5 4 4 4
+RR...
+....W
+.W...
+..R..
+W...R
+W.W..
+[AWAY 21 HOME_WIN]
+HUMAN (W) (9964.130000 seconds remaining) won.
+Alpha-Beta had 359.996000 seconds remaining.
