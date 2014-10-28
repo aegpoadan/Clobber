@@ -1,8 +1,11 @@
 package clobber;
 
+import java.util.Arrays;
+import java.util.Collections;
+
 import game.*;
 
-public class BaseAlphaBetaPlayer extends GamePlayer {
+public class AlphaBetaFCDynamicDepth extends GamePlayer {
 
 	public class ScoredClobberMove extends ClobberMove 
 				 implements Comparable<ScoredClobberMove> {
@@ -60,18 +63,29 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	//hardcode
 	public static final int MAX_SCORE = 10000;
 	public static final int MAX_DEPTH = 50;
+	public static final int DEPTH_BASE = 6;
 	private ScoredClobberMove[] mvStack;
-	public int depthLimit = 8;
-	
-	public BaseAlphaBetaPlayer(String n) {
+	private int depth;
+	private int maxDepthReached;
+		
+	public AlphaBetaFCDynamicDepth(String n) {
 		super(n, new ClobberState(), false);
 	}
 	
 	@Override
 	public GameMove getMove(GameState state, String lastMv) {
-		alphaBeta((ClobberState) state, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
-		System.out.println("Move score: " + mvStack[0].score);
+		maxDepthReached = 0;
+		calcDepth(state.numMoves);
+		alphaBeta((ClobberState)state, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+		System.out.println("Move score: " + mvStack[0].score 
+				+ "\n" + "Depth Reached: " + maxDepthReached + "\n");
 		return mvStack[0];
+	}
+	
+	private void calcDepth(int numMoves) {
+		// Calculate the depth limit of AB 
+		// by giving number of moves made on board
+		depth = numMoves*numMoves/10 + DEPTH_BASE;
 	}
 	
 	private boolean hasPawn(ClobberState board, char who,
@@ -146,6 +160,7 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	@Override
 	public void init()
 	{
+		depth = DEPTH_BASE;
 		mvStack = new ScoredClobberMove[MAX_DEPTH];
 		for (int i=0; i<MAX_DEPTH; i++) {
 			mvStack[i] = new ScoredClobberMove();
@@ -176,6 +191,14 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 			ary[spot] = tmp;
 		}
 	}
+
+	private static void reOrder(ScoredClobberMove[] mvArray, int count,
+			boolean isToMax) {
+		if (isToMax)
+			Arrays.sort(mvArray, 0, count - 1, Collections.reverseOrder());
+		else
+			Arrays.sort(mvArray, 0, count - 1);
+	}
 	
 	private void undoMove (ClobberState board, ScoredClobberMove mv) {
 		board.board[mv.row1][mv.col1] = board.board[mv.row2][mv.col2];
@@ -189,7 +212,9 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	private int addValidMove (ClobberState board, ScoredClobberMove mv, 
 							   ScoredClobberMove[] mvArray, int index) {
 		if (board.moveOK(mv)) {
+			board.makeMove(mv);
 			mv.set(evalBoard(board));
+			undoMove(board, mv);
 			mvArray[index] = mv;
 			return index+1;
 		}
@@ -201,13 +226,10 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 		int moveCount = 0;
 		for (int r = 0; r < ClobberState.ROWS; r++) {
 			for (int c = 0; c < ClobberState.COLS; c++) {
-				ScoredClobberMove moveUp = new ScoredClobberMove(r, c, r + 1, c);
-				ScoredClobberMove moveDown = new ScoredClobberMove(r, c, r - 1,
-						c);
-				ScoredClobberMove moveLeft = new ScoredClobberMove(r, c, r,
-						c - 1);
-				ScoredClobberMove moveRight = new ScoredClobberMove(r, c, r,
-						c + 1);
+				ScoredClobberMove moveUp = new ScoredClobberMove(r,c,r+1,c);
+				ScoredClobberMove moveDown = new ScoredClobberMove(r,c,r-1,c);
+				ScoredClobberMove moveLeft = new ScoredClobberMove(r,c,r,c-1);
+				ScoredClobberMove moveRight = new ScoredClobberMove(r,c,r,c+1);
 				moveCount = addValidMove(board, moveUp, moveArray, moveCount);
 				moveCount = addValidMove(board, moveDown, moveArray, moveCount);
 				moveCount = addValidMove(board, moveLeft, moveArray, moveCount);
@@ -220,60 +242,59 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	private void alphaBeta(ClobberState board, int currDepth, double alpha, double beta) {
 
 		boolean toMaximize = (board.getWho() == GameState.Who.HOME);
-		boolean toMinimize = !toMaximize;
-
 		boolean isTerminal = terminalValue(board, mvStack[currDepth]);
 		
 		if (isTerminal) {
 			;
-		} else if (currDepth == depthLimit) {
+		} else if (currDepth == depth) {
 			mvStack[currDepth].set(evalBoard(board));
 		} else {
-			ScoredClobberMove bestMove = mvStack[currDepth];
 			ScoredClobberMove nextMove = mvStack[currDepth+1];
+			ScoredClobberMove bestMove = mvStack[currDepth];
 			double bestScore = (toMaximize ? 
 					Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY);
 			bestMove.set(bestScore);
+			
+			// Create a move array with one level down forward checking
+			ScoredClobberMove[] mvArray = new ScoredClobberMove
+					[ClobberState.ROWS*ClobberState.COLS*2-board.numMoves*2];
+			int moveCount = createMoveArray(board, mvArray);
+			reOrder(mvArray, moveCount, toMaximize);
 
-			ScoredClobberMove[] moveArray 
-				= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
-			int moveCount = createMoveArray(board, moveArray);
-			
-			shuffle(moveArray, moveCount);
-			
+			// Performance evaluation use
+			if (currDepth == 0)
+				System.out.println("Total moves possible: " + moveCount);
+			maxDepthReached = Math.max(currDepth, maxDepthReached);
+						
 			for (int i = 0; i < moveCount; i++) {
-				ScoredClobberMove mv = moveArray[i];
+				ScoredClobberMove mv = mvArray[i];
 				board.makeMove(mv);
 				alphaBeta(board, currDepth + 1, alpha, beta); // Check out move
 				undoMove(board, mv);
 
-				// Check out the results, relative to what we've seen before
-				if (toMaximize && nextMove.score > bestMove.score) {
+				// Check out the results, update Max/Min nodes
+				if (toMaximize && nextMove.score > bestMove.score)
 					bestMove.set(mv, nextMove.score);
-				} else if (!toMaximize && nextMove.score < bestMove.score) {
+				else if (!toMaximize && nextMove.score < bestMove.score)
 					bestMove.set(mv, nextMove.score);
-				}
 
 				// Update alpha and beta. Perform pruning, if possible.
-				if (toMinimize) {
-					beta = Math.min(bestMove.score, beta);
-					if (bestMove.score <= alpha || bestMove.score == -MAX_SCORE) {
-						return;
-					}
-				} else {
+				if (toMaximize) {
 					alpha = Math.max(bestMove.score, alpha);
-					if (bestMove.score >= beta || bestMove.score == MAX_SCORE) {
+					if (bestMove.score >= beta || bestMove.score == MAX_SCORE)
 						return;
-					}
+				} else {
+					beta = Math.min(bestMove.score, beta);
+					if (bestMove.score <= alpha || bestMove.score == -MAX_SCORE)
+						return;
 				}
 			}
 		}
-
 	}
 	
 	public static void main(String [] args)
 	{
-		GamePlayer p = new AlphaBetaClobberPlayer("ABRandom");
+		GamePlayer p = new AlphaBetaFCDynamicDepth("ABFCDynamicDepth");
 		p.compete(args);
 		/*
 		p.init();

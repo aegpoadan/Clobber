@@ -1,8 +1,12 @@
 package clobber;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+
 import game.*;
 
-public class BaseAlphaBetaPlayer extends GamePlayer {
+public class AlphaBetaForwardChecking extends GamePlayer {
 
 	public class ScoredClobberMove extends ClobberMove 
 				 implements Comparable<ScoredClobberMove> {
@@ -63,12 +67,13 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	private ScoredClobberMove[] mvStack;
 	public int depthLimit = 8;
 	
-	public BaseAlphaBetaPlayer(String n) {
+	public AlphaBetaForwardChecking(String n) {
 		super(n, new ClobberState(), false);
 	}
 	
 	@Override
 	public GameMove getMove(GameState state, String lastMv) {
+		
 		alphaBeta((ClobberState) state, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
 		System.out.println("Move score: " + mvStack[0].score);
 		return mvStack[0];
@@ -176,6 +181,14 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 			ary[spot] = tmp;
 		}
 	}
+
+	private static void reOrder(ScoredClobberMove[] mvArray, int count,
+			boolean isToMax) {
+		if (isToMax)
+			Arrays.sort(mvArray, 0, count - 1, Collections.reverseOrder());
+		else
+			Arrays.sort(mvArray, 0, count - 1);
+	}
 	
 	private void undoMove (ClobberState board, ScoredClobberMove mv) {
 		board.board[mv.row1][mv.col1] = board.board[mv.row2][mv.col2];
@@ -189,7 +202,9 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	private int addValidMove (ClobberState board, ScoredClobberMove mv, 
 							   ScoredClobberMove[] mvArray, int index) {
 		if (board.moveOK(mv)) {
+			board.makeMove(mv);
 			mv.set(evalBoard(board));
+			undoMove(board, mv);
 			mvArray[index] = mv;
 			return index+1;
 		}
@@ -239,7 +254,8 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 				= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
 			int moveCount = createMoveArray(board, moveArray);
 			
-			shuffle(moveArray, moveCount);
+			//shuffle(moveArray, moveCount);
+			reOrder(moveArray, moveCount, toMaximize);
 			
 			for (int i = 0; i < moveCount; i++) {
 				ScoredClobberMove mv = moveArray[i];
@@ -273,7 +289,7 @@ public class BaseAlphaBetaPlayer extends GamePlayer {
 	
 	public static void main(String [] args)
 	{
-		GamePlayer p = new AlphaBetaClobberPlayer("ABRandom");
+		GamePlayer p = new AlphaBetaClobberPlayer("ABForwardChecking");
 		p.compete(args);
 		/*
 		p.init();

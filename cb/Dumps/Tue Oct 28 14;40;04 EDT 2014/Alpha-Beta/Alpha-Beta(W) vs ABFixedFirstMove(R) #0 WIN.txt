@@ -1,0 +1,9 @@
+Alpha-Beta (W) played 2 4 2 3
+RWRWR
+WRWRW
+RWRWR
+WRWW.
+RWRWR
+WRWRW
+[AWAY 1 GAME_ON]
+Alpha-Beta won. ABFixedFirstMove made bad move 2 0 2 1
