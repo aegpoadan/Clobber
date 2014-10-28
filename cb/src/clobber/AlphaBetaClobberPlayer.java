@@ -7,7 +7,7 @@ import java.util.Random;
 
 import game.*;
 
-public class ABFCDDFixedFisrtMove extends GamePlayer {
+public class AlphaBetaClobberPlayer extends GamePlayer {
 
 	public class ScoredClobberMove extends ClobberMove 
 				 implements Comparable<ScoredClobberMove> {
@@ -48,6 +48,20 @@ public class ABFCDDFixedFisrtMove extends GamePlayer {
 			score = s;
 		}
 	}
+	
+	private class Block {
+		public int homeCount;
+		public int awayCount;
+		public int homeScore;
+		public int awayScore;
+		
+		public Block() {
+			homeCount = 0;
+			awayCount = 0;
+			homeScore = 0;
+			awayScore = 0;
+		}
+	}
 
 	//hardcode
 	public static final int MAX_SCORE = 10000;
@@ -73,7 +87,7 @@ public class ABFCDDFixedFisrtMove extends GamePlayer {
 		}
 	}
 	
-	public ABFCDDFixedFisrtMove(String n) {
+	public AlphaBetaClobberPlayer(String n) {
 		super(n, new ClobberState(), false);
 	}
 	
@@ -81,10 +95,6 @@ public class ABFCDDFixedFisrtMove extends GamePlayer {
 	public GameMove getMove(GameState state, String lastMv) {
 		// Performance evaluation use
 		maxDepthReached = 0;
-		
-		// fixed first move
-		if (state.numMoves/2 == 0)
-			return fixedFirstMove(state);
 		
 		//computeKeys();
 		calcDepth(state.numMoves);
@@ -96,85 +106,212 @@ public class ABFCDDFixedFisrtMove extends GamePlayer {
 		return mvStack[0];
 	}
 	
-	private ClobberMove fixedFirstMove(GameState state) {
-		ClobberMove mv = new ClobberMove(2,4,2,3);
-		if (state.moveOK(mv))
-			return mv;
-		else {
-			mv.row1 = 3;
-			mv.row2 = 3;
-		}
-		return mv;
-	}
-	
 	private void calcDepth(int numMoves) {
 		// Calculate the depth limit of AB 
 		// by giving number of moves made on board
 		depthLimit = (numMoves/2)*(numMoves/2)/DEPTH_FACTOR + DEPTH_BASE;
 	}
 	
-	private boolean hasPawn(ClobberState board, char who,
-										 int r, int c) {
+	private char hasPawn(char[][] board, int r, int c) {
 		if (Util.inrange(r, ClobberState.ROWS-1) && Util.inrange(c, ClobberState.COLS-1)) {
-			if (board.board[r][c] == who) {
+			return board[r][c];
+		}
+		return ' ';
+	}
+	
+	private boolean hasBlockNum(int[][] whichBlock, int r, int c) {
+		if (Util.inrange(r, ClobberState.ROWS-1) && Util.inrange(c, ClobberState.COLS-1)) {
+			if (whichBlock[r][c] != 0)
 				return true;
-			}
 		}
 		return false;
 	}
 	
-	private int checkDiagonals (ClobberState board, char who, int score,
-						   int r, int c) {
-		// Check to see there're allied pawns at diagonals
-		score = hasPawn(board,who,r-1,c-1)?score+1:score;
-		score = hasPawn(board,who,r+1,c-1)?score+1:score;
-		score = hasPawn(board,who,r+1,c+1)?score+1:score;
-		score = hasPawn(board,who,r-1,c+1)?score+1:score;
-		return score;
+	private void checkAdj2(int r, int c, char who, Block block, char[][] board) {
+		// If adjacent pawn is opponent, we increment the score.
+		
+		char pieceLeft = hasPawn(board, r, c-1);
+		char pieceRight = hasPawn(board, r, c+1);
+		char pieceUp = hasPawn(board, r-1, c);
+		char pieceDown = hasPawn(board, r+1, c);
+		
+		if (who == ClobberState.homeSym) {
+			if (pieceLeft == ClobberState.awaySym) 
+				block.homeScore++;
+			if (pieceRight == ClobberState.awaySym) 
+				block.homeScore++;
+			if (pieceUp == ClobberState.awaySym) 
+				block.homeScore++;
+			if (pieceDown == ClobberState.awaySym) 
+				block.homeScore++;
+		} else {
+			if (pieceLeft == ClobberState.homeSym) 
+				block.awayScore++;
+			if (pieceRight == ClobberState.homeSym) 
+				block.awayScore++;
+			if (pieceUp == ClobberState.homeSym) 
+				block.awayScore++;
+			if (pieceDown != ClobberState.homeSym) 
+				block.awayScore++;
+		}
 	}
 	
-	private int eval(ClobberState board, char who) {
-		int score = 0;
-		int count = 0;
-		boolean valid = false;
-		char opponent = who == ClobberState.homeSym 
-						? ClobberState.awaySym : ClobberState.homeSym;
-		for (int r = 0; r < board.ROWS; r++) {
-			for (int c = 0; c < board.COLS; c++) {
-				valid = false;
-				if (board.board[r][c] == who) {
-					if (hasPawn(board, opponent, r-1, c)){
-						valid = true;
-						score++;
-						score = checkDiagonals(board, who, score, r, c);
-					}
-					if (hasPawn(board, opponent, r+1, c)){
-						valid = true;
-						score++;
-						score = checkDiagonals(board, who, score, r, c);
-					}
-					if (hasPawn(board, opponent, r, c+1)){
-						valid = true;
-						score++;
-						score = checkDiagonals(board, who, score, r, c);
-					} 
-					if (hasPawn(board, opponent, r, c-1)){
-						valid = true;
-						score++;
-						score = checkDiagonals(board, who, score, r, c);
-					}
-					if (valid) {
-						score++;
-						count++;
-					}
+	private void checkAdj(int r, int c, char who, Block block, char[][] board) {
+		// whatever the adjacent pawn is, we increment the score.
+		// also check diagonal allies
+		
+		char pieceLeft = hasPawn(board, r, c-1);
+		char pieceRight = hasPawn(board, r, c+1);
+		char pieceUp = hasPawn(board, r-1, c);
+		char pieceDown = hasPawn(board, r+1, c);
+		
+		if (who == ClobberState.homeSym) {
+			boolean[] diagonalChecked = new boolean[4];
+			if (pieceLeft == ClobberState.homeSym) {
+				block.homeScore++;
+			} else if (pieceLeft == ClobberState.awaySym) {
+				block.homeScore++;
+				if (hasPawn(board,r-1,c-1) == ClobberState.homeSym){
+					block.homeScore++;
+					diagonalChecked[0] = true;
 				}
+				if (hasPawn(board,r+1,c-1) == ClobberState.homeSym) {
+					block.homeScore++;
+					diagonalChecked[1] = true;
+				}
+			}
+			if (pieceRight == ClobberState.homeSym) {
+				block.homeScore++;
+			} else if (pieceRight == ClobberState.awaySym) { 
+				block.homeScore++;
+				if (hasPawn(board,r-1,c+1) == ClobberState.homeSym){
+					block.homeScore++;
+					diagonalChecked[2] = true;
+				}
+				if (hasPawn(board,r+1,c+1) == ClobberState.homeSym) {
+					block.homeScore++;
+					diagonalChecked[3] = true;
+				}
+			}
+			if (pieceUp == ClobberState.homeSym) {
+				block.homeScore++;
+			} else if (pieceUp == ClobberState.awaySym) { 
+				block.homeScore++;
+				if (hasPawn(board,r-1,c-1) == ClobberState.homeSym && !diagonalChecked[0])
+					block.homeScore++;
+				if (hasPawn(board,r-1,c+1) == ClobberState.homeSym && !diagonalChecked[2])
+					block.homeScore++;
+			}
+			if (pieceDown == ClobberState.homeSym) {
+				block.homeScore++;
+			} else if (pieceDown == ClobberState.awaySym) { 
+				block.homeScore++;
+				if (hasPawn(board,r+1,c-1) == ClobberState.homeSym && !diagonalChecked[1])
+					block.homeScore++;
+				if (hasPawn(board,r+1,c+1) == ClobberState.homeSym && !diagonalChecked[3])
+					block.homeScore++;
+			}
+		} else {
+			boolean[] diagonalChecked = new boolean[4];
+			if (pieceLeft == ClobberState.awaySym) {
+				block.awayScore++;
+			} else if (pieceLeft == ClobberState.homeSym) {
+				block.awayScore++;
+				if (hasPawn(board,r-1,c-1) == ClobberState.awaySym){
+					block.awayScore++;
+					diagonalChecked[0] = true;
+				}
+				if (hasPawn(board,r+1,c-1) == ClobberState.awaySym) {
+					block.awayScore++;
+					diagonalChecked[1] = true;
+				}
+			}
+			if (pieceRight == ClobberState.awaySym) {
+				block.awayScore++;
+			} else if (pieceRight == ClobberState.homeSym) { 
+				block.awayScore++;
+				if (hasPawn(board,r-1,c+1) == ClobberState.awaySym){
+					block.awayScore++;
+					diagonalChecked[2] = true;
+				}
+				if (hasPawn(board,r+1,c+1) == ClobberState.awaySym) {
+					block.awayScore++;
+					diagonalChecked[3] = true;
+				}
+			}
+			if (pieceUp == ClobberState.awaySym) {
+				block.awayScore++;
+			} else if (pieceUp == ClobberState.homeSym) { 
+				block.awayScore++;
+				if (hasPawn(board,r-1,c-1) == ClobberState.awaySym && !diagonalChecked[0])
+					block.awayScore++;
+				if (hasPawn(board,r-1,c+1) == ClobberState.awaySym && !diagonalChecked[2])
+					block.awayScore++;
+			}
+			if (pieceDown == ClobberState.awaySym) {
+				block.awayScore++;
+			} else if (pieceDown == ClobberState.homeSym) { 
+				block.awayScore++;
+				if (hasPawn(board,r+1,c-1) == ClobberState.awaySym && !diagonalChecked[1])
+					block.awayScore++;
+				if (hasPawn(board,r+1,c+1) == ClobberState.awaySym && !diagonalChecked[3])
+					block.awayScore++;
+			}
+		}
+	}
+	
+	private double eval(char[][] board) {
+		int blockAssigned = 0;
+		double score = 0;
+		Block[] blocks = new Block[ClobberState.ROWS*ClobberState.COLS/2 + 1];
+		int[][] whichBlock = new int[ClobberState.ROWS][ClobberState.COLS];
+		
+		for (int r = 0; r < ClobberState.ROWS; r++) {
+			for (int c = 0; c < ClobberState.COLS; c++) {
+				char who = board[r][c];
+				if (who != ClobberState.emptySym) {
+					int blockNum = 0;
+					if (hasBlockNum(whichBlock, r-1, c))
+						blockNum = whichBlock[r-1][c];
+					else if (hasBlockNum(whichBlock, r+1, c))
+						blockNum = whichBlock[r+1][c];
+					else if (hasBlockNum(whichBlock, r, c-1))
+						blockNum = whichBlock[r][c-1];
+					else if (hasBlockNum(whichBlock, r, c+1))
+						blockNum = whichBlock[r][c+1];
+					if (blockNum == 0) {
+						blockAssigned++;
+						blockNum = blockAssigned;
+						blocks[blockNum] = new Block();
+					}
+					whichBlock[r][c] = blockNum;
+					
+					if (who == ClobberState.homeSym)
+						blocks[blockNum].homeCount++;
+					else
+						blocks[blockNum].awayCount++;
+					checkAdj(r, c , who, blocks[blockNum], board);
+				}
+			}
+		}
+		
+		for (int i = 1; i <= blockAssigned; i++) {
+			Block b = blocks[i];
+			if (b.homeCount == 0 || b.awayCount == 0)
+				continue;
+			if (b.homeCount >= b.awayCount) {
+				score += ((double)b.homeCount)/((double)b.awayCount)
+						 *(b.homeCount-b.awayCount+b.homeScore-b.awayScore);
+			} else {
+				score += ((double)b.awayCount)/((double)b.homeCount)
+						 *(b.homeCount-b.awayCount+b.homeScore-b.awayScore);
 			}
 		}
 		return score;
 	}
 	
-	private int evalBoard(ClobberState board) {
-		int score = eval(board, ClobberState.homeSym) - eval(board, ClobberState.awaySym);
+	private double evalBoard(ClobberState board) {
+		double score = eval(board.board);
 		if (Math.abs(score) > MAX_SCORE) {
 			System.err.println("Problem with eval");
 			System.exit(0);
@@ -340,7 +477,7 @@ public class ABFCDDFixedFisrtMove extends GamePlayer {
 	
 	public static void main(String [] args)
 	{
-		GamePlayer p = new ABFCDDFixedFisrtMove("ABFixedFirstMove");
+		GamePlayer p = new AlphaBetaClobberPlayer("Alpha-Beta");
 		p.compete(args);
 	}
 
