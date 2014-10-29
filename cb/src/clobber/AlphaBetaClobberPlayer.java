@@ -1,317 +1,154 @@
 package clobber;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Hashtable;
-import java.util.Random;
+import java.util.ArrayList;
 
 import game.*;
 
-public class AlphaBetaClobberPlayer extends GamePlayer {
+public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
+	private static ArrayList<AlphaBetaClobberPlayer> players = new ArrayList<AlphaBetaClobberPlayer>();
+	private static ArrayList<Thread> threadPool = new ArrayList<Thread>();
+	private static ArrayList<ClobberState> states = new ArrayList<ClobberState>();
+	private ClobberState bestState;
+	private int threadId;
+	private static int numCores = Runtime.getRuntime().availableProcessors();
+	private boolean fresh;
+	private static int stateIndex;
+	private static int bestThread;
+	private static boolean multiThreaded = true;
 
-	public class ScoredClobberMove extends ClobberMove 
-				 implements Comparable<ScoredClobberMove> {
-		
-		public double score;
-		
-		@Override
-		public int compareTo(ScoredClobberMove mv) {
-			// TODO Auto-generated method stub
-			double diff = this.score - mv.score;
-			if (diff > 0) {
-				return 1;
-			} else if (diff < 0) {
-				return -1;
-			} else {
-				return 0;
-			}
-		}
-		
+	public class ScoredClobberMove extends ClobberMove {
 		public ScoredClobberMove() {
 			super();
 		}
-		public ScoredClobberMove(int r1, int c1, int r2, int c2) {
+		public ScoredClobberMove(int r1, int c1, int r2, int c2, double s) {
 			row1 = r1;
 			col1 = c1;
 			row2 = r2;
 			col2 = c2;
+			score = s;
 		}
-		public void set(ClobberMove mv, double s)
+		
+		public ScoredClobberMove(ScoredClobberMove m)
 		{
-			row1 = mv.row1;
-			col1 = mv.col1;
-			row2 = mv.row2;
-			col2 = mv.col2;
+			super(m.row1, m.col1, m.row2, m.col2);
+			score = m.score;
+		}
+		public void set(int r1, int c1, int r2, int c2, double s)
+		{
+			row1 = r1;
+			col1 = c1;
+			row2 = r2;
+			col2 = c2;
 			score = s;
 		}
 		public void set(double s) {
 			score = s;
 		}
-	}
-	
-	private class Block {
-		public int homeCount;
-		public int awayCount;
-		public int homeScore;
-		public int awayScore;
-		
-		public Block() {
-			homeCount = 0;
-			awayCount = 0;
-			homeScore = 0;
-			awayScore = 0;
-		}
+		public double score;
 	}
 
 	//hardcode
 	public static final int MAX_SCORE = 10000;
-	public static final int DEPTH_BASE = 8;
-	public static final int DEPTH_FACTOR = 3;
+	public static final int MAX_DEPTH = 50;
 	private ScoredClobberMove[] mvStack;
-	private int depthLimit;
-	private boolean directPrune;
-	private int[][][] keyTable;
-	private Hashtable<Integer, char[][]> TransTable;
-	
-	// Performance evaluation use
-	private int maxDepthReached;
-		
-	private void computeKeys() {
-		Random rand = new Random();
-		for (int r = 0; r < ClobberState.ROWS; r++) {
-			for (int c = 0; c < ClobberState.COLS; c++) {
-				for (int i = 0; i < GameState.Who.values().length; i++) {
-					keyTable[i][r][c] = rand.nextInt(0xFFFF);
-				}
-			}
-		}
-	}
+	public int depthLimit = 6;
 	
 	public AlphaBetaClobberPlayer(String n) {
 		super(n, new ClobberState(), false);
 	}
 	
+	//When multi-threading, each thread needs its own gameState
+	public AlphaBetaClobberPlayer(String n, GameState gs, int threadId, boolean fresh) {
+		super(n, gs, false);
+		this.threadId = threadId;
+	}
+	
+	@SuppressWarnings("finally")
 	@Override
 	public GameMove getMove(GameState state, String lastMv) {
-		// Performance evaluation use
-		maxDepthReached = 0;
-		
-		//computeKeys();
-		calcDepth(state.numMoves);
-		alphaBeta((ClobberState)state, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
-		if (maxDepthReached < depthLimit)
-			directPrune = false;
-		System.out.println("Move score: " + mvStack[0].score 
-				+ "\n" + "Depth Reached: " + (maxDepthReached+1) + "\n");
-		return mvStack[0];
-	}
-	
-	private void calcDepth(int numMoves) {
-		// Calculate the depth limit of AB 
-		// by giving number of moves made on board
-		depthLimit = (numMoves/2)*(numMoves/2)/DEPTH_FACTOR + DEPTH_BASE;
-	}
-	
-	private char hasPawn(char[][] board, int r, int c) {
-		if (Util.inrange(r, ClobberState.ROWS-1) && Util.inrange(c, ClobberState.COLS-1)) {
-			return board[r][c];
+		if (multiThreaded) {
+			expandNode((ClobberState)state);
+			try {
+				runThreads((ClobberState)state);
+				System.out.println(players.get(bestThread).mvStack[0].score);
+				return players.get(bestThread).mvStack[0];
+			} catch (InterruptedException e) {
+				System.err.println("A thread was interrupted!");
+				e.printStackTrace();
+			} finally { //If multi-threading fails, do serial version
+				System.err.println("Error running multi-threaded version! Running serial instead");
+				clearThreads();
+				alphaBeta((ClobberState)state, 0, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY);
+				System.out.println(mvStack[0].score);
+				return mvStack[0];
+			}
+		} else {
+			alphaBeta((ClobberState)state, 0, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY);
+			System.out.println(mvStack[0].score);
+			return mvStack[0];
 		}
-		return ' ';
 	}
 	
-	private boolean hasBlockNum(int[][] whichBlock, int r, int c) {
+	private static boolean hasPawn(ClobberState board, char who,
+										 int r, int c) {
 		if (Util.inrange(r, ClobberState.ROWS-1) && Util.inrange(c, ClobberState.COLS-1)) {
-			if (whichBlock[r][c] != 0)
+			if (board.board[r][c] == who) {
 				return true;
+			}
 		}
 		return false;
 	}
 	
-	private void checkAdj2(int r, int c, char who, Block block, char[][] board) {
-		// If adjacent pawn is opponent, we increment the score.
+	private static int checkDiagonals (ClobberState board, char who, int score,
+						   int r, int c) {
+		// Check to see there're allied pawns at diagonals
 		
-		char pieceLeft = hasPawn(board, r, c-1);
-		char pieceRight = hasPawn(board, r, c+1);
-		char pieceUp = hasPawn(board, r-1, c);
-		char pieceDown = hasPawn(board, r+1, c);
-		
-		if (who == ClobberState.homeSym) {
-			if (pieceLeft == ClobberState.awaySym) 
-				block.homeScore++;
-			if (pieceRight == ClobberState.awaySym) 
-				block.homeScore++;
-			if (pieceUp == ClobberState.awaySym) 
-				block.homeScore++;
-			if (pieceDown == ClobberState.awaySym) 
-				block.homeScore++;
-		} else {
-			if (pieceLeft == ClobberState.homeSym) 
-				block.awayScore++;
-			if (pieceRight == ClobberState.homeSym) 
-				block.awayScore++;
-			if (pieceUp == ClobberState.homeSym) 
-				block.awayScore++;
-			if (pieceDown != ClobberState.homeSym) 
-				block.awayScore++;
-		}
+		score++;
+		score = hasPawn(board,who,r-1,c-1)?score+1:score;
+		score = hasPawn(board,who,r+1,c-1)?score+1:score;
+		score = hasPawn(board,who,r+1,c+1)?score+1:score;
+		score = hasPawn(board,who,r-1,c+1)?score+1:score;
+		return score;
 	}
 	
-	private void checkAdj(int r, int c, char who, Block block, char[][] board) {
-		// whatever the adjacent pawn is, we increment the score.
-		// also check diagonal allies
-		
-		char pieceLeft = hasPawn(board, r, c-1);
-		char pieceRight = hasPawn(board, r, c+1);
-		char pieceUp = hasPawn(board, r-1, c);
-		char pieceDown = hasPawn(board, r+1, c);
-		
-		if (who == ClobberState.homeSym) {
-			boolean[] diagonalChecked = new boolean[4];
-			if (pieceLeft == ClobberState.homeSym) {
-				block.homeScore++;
-			} else if (pieceLeft == ClobberState.awaySym) {
-				block.homeScore++;
-				if (hasPawn(board,r-1,c-1) == ClobberState.homeSym){
-					block.homeScore++;
-					diagonalChecked[0] = true;
-				}
-				if (hasPawn(board,r+1,c-1) == ClobberState.homeSym) {
-					block.homeScore++;
-					diagonalChecked[1] = true;
-				}
-			}
-			if (pieceRight == ClobberState.homeSym) {
-				block.homeScore++;
-			} else if (pieceRight == ClobberState.awaySym) { 
-				block.homeScore++;
-				if (hasPawn(board,r-1,c+1) == ClobberState.homeSym){
-					block.homeScore++;
-					diagonalChecked[2] = true;
-				}
-				if (hasPawn(board,r+1,c+1) == ClobberState.homeSym) {
-					block.homeScore++;
-					diagonalChecked[3] = true;
-				}
-			}
-			if (pieceUp == ClobberState.homeSym) {
-				block.homeScore++;
-			} else if (pieceUp == ClobberState.awaySym) { 
-				block.homeScore++;
-				if (hasPawn(board,r-1,c-1) == ClobberState.homeSym && !diagonalChecked[0])
-					block.homeScore++;
-				if (hasPawn(board,r-1,c+1) == ClobberState.homeSym && !diagonalChecked[2])
-					block.homeScore++;
-			}
-			if (pieceDown == ClobberState.homeSym) {
-				block.homeScore++;
-			} else if (pieceDown == ClobberState.awaySym) { 
-				block.homeScore++;
-				if (hasPawn(board,r+1,c-1) == ClobberState.homeSym && !diagonalChecked[1])
-					block.homeScore++;
-				if (hasPawn(board,r+1,c+1) == ClobberState.homeSym && !diagonalChecked[3])
-					block.homeScore++;
-			}
-		} else {
-			boolean[] diagonalChecked = new boolean[4];
-			if (pieceLeft == ClobberState.awaySym) {
-				block.awayScore++;
-			} else if (pieceLeft == ClobberState.homeSym) {
-				block.awayScore++;
-				if (hasPawn(board,r-1,c-1) == ClobberState.awaySym){
-					block.awayScore++;
-					diagonalChecked[0] = true;
-				}
-				if (hasPawn(board,r+1,c-1) == ClobberState.awaySym) {
-					block.awayScore++;
-					diagonalChecked[1] = true;
-				}
-			}
-			if (pieceRight == ClobberState.awaySym) {
-				block.awayScore++;
-			} else if (pieceRight == ClobberState.homeSym) { 
-				block.awayScore++;
-				if (hasPawn(board,r-1,c+1) == ClobberState.awaySym){
-					block.awayScore++;
-					diagonalChecked[2] = true;
-				}
-				if (hasPawn(board,r+1,c+1) == ClobberState.awaySym) {
-					block.awayScore++;
-					diagonalChecked[3] = true;
-				}
-			}
-			if (pieceUp == ClobberState.awaySym) {
-				block.awayScore++;
-			} else if (pieceUp == ClobberState.homeSym) { 
-				block.awayScore++;
-				if (hasPawn(board,r-1,c-1) == ClobberState.awaySym && !diagonalChecked[0])
-					block.awayScore++;
-				if (hasPawn(board,r-1,c+1) == ClobberState.awaySym && !diagonalChecked[2])
-					block.awayScore++;
-			}
-			if (pieceDown == ClobberState.awaySym) {
-				block.awayScore++;
-			} else if (pieceDown == ClobberState.homeSym) { 
-				block.awayScore++;
-				if (hasPawn(board,r+1,c-1) == ClobberState.awaySym && !diagonalChecked[1])
-					block.awayScore++;
-				if (hasPawn(board,r+1,c+1) == ClobberState.awaySym && !diagonalChecked[3])
-					block.awayScore++;
-			}
-		}
-	}
-	
-	private double eval(char[][] board) {
-		int blockAssigned = 0;
-		double score = 0;
-		Block[] blocks = new Block[ClobberState.ROWS*ClobberState.COLS/2 + 1];
-		int[][] whichBlock = new int[ClobberState.ROWS][ClobberState.COLS];
-		
-		for (int r = 0; r < ClobberState.ROWS; r++) {
-			for (int c = 0; c < ClobberState.COLS; c++) {
-				char who = board[r][c];
-				if (who != ClobberState.emptySym) {
-					int blockNum = 0;
-					if (hasBlockNum(whichBlock, r-1, c))
-						blockNum = whichBlock[r-1][c];
-					else if (hasBlockNum(whichBlock, r+1, c))
-						blockNum = whichBlock[r+1][c];
-					else if (hasBlockNum(whichBlock, r, c-1))
-						blockNum = whichBlock[r][c-1];
-					else if (hasBlockNum(whichBlock, r, c+1))
-						blockNum = whichBlock[r][c+1];
-					if (blockNum == 0) {
-						blockAssigned++;
-						blockNum = blockAssigned;
-						blocks[blockNum] = new Block();
+	private static int eval(ClobberState board, char who) {
+		int score = 0;
+		int count = 0;
+		boolean valid = false;
+		char opponent = who == ClobberState.homeSym 
+						? ClobberState.awaySym : ClobberState.homeSym;
+		for (int r = 0; r < board.ROWS; r++) {
+			for (int c = 0; c < board.COLS; c++) {
+				valid = false;
+				if (board.board[r][c] == who) {
+					if (hasPawn(board, opponent, r-1, c)){
+						valid = true;
+						score = checkDiagonals(board, who, score, r, c);
 					}
-					whichBlock[r][c] = blockNum;
-					
-					if (who == ClobberState.homeSym)
-						blocks[blockNum].homeCount++;
-					else
-						blocks[blockNum].awayCount++;
-					checkAdj(r, c , who, blocks[blockNum], board);
+					if (hasPawn(board, opponent, r+1, c)){
+						valid = true;
+						score = checkDiagonals(board, who, score, r, c);
+					}
+					if (hasPawn(board, opponent, r, c+1)){
+						valid = true;
+						score = checkDiagonals(board, who, score, r, c);
+					} 
+					if (hasPawn(board, opponent, r, c-1)){
+						valid = true;
+						score = checkDiagonals(board, who, score, r, c);
+					}
+					if (valid) {
+						score++;
+						count++;
+					}
 				}
-			}
-		}
-		
-		for (int i = 1; i <= blockAssigned; i++) {
-			Block b = blocks[i];
-			if (b.homeCount == 0 || b.awayCount == 0)
-				continue;
-			if (b.homeCount >= b.awayCount) {
-				score += ((double)b.homeCount)/((double)b.awayCount)
-						 *(b.homeCount-b.awayCount+b.homeScore-b.awayScore);
-			} else {
-				score += ((double)b.awayCount)/((double)b.homeCount)
-						 *(b.homeCount-b.awayCount+b.homeScore-b.awayScore);
 			}
 		}
 		return score;
 	}
 	
-	private double evalBoard(ClobberState board) {
-		double score = eval(board.board);
+	private static int evalBoard(ClobberState board) {
+		int score = eval(board, ClobberState.homeSym) - eval(board, ClobberState.awaySym);
 		if (Math.abs(score) > MAX_SCORE) {
 			System.err.println("Problem with eval");
 			System.exit(0);
@@ -322,19 +159,10 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 	@Override
 	public void init()
 	{
-		depthLimit = DEPTH_BASE;
-		directPrune = true;
-		int maxMoves = ClobberState.ROWS*ClobberState.COLS*2 
-					 - ClobberState.ROWS-ClobberState.COLS;
-		mvStack = new ScoredClobberMove[maxMoves];
-		for (int i=0; i<maxMoves; i++) {
+		mvStack = new ScoredClobberMove[MAX_DEPTH];
+		for (int i=0; i<MAX_DEPTH; i++) {
 			mvStack[i] = new ScoredClobberMove();
 		}
-		/*
-		keyTable = new int[GameState.Who.values().length]
-				[ClobberState.ROWS][ClobberState.COLS];
-		TransTable = new Hashtable<Integer, char[][]>(0xFFFF);
-		*/
 	}
 	
 	private boolean terminalValue(GameState brd, ScoredClobberMove mv)
@@ -362,56 +190,12 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 		}
 	}
 
-	private static void reOrder(ScoredClobberMove[] mvArray, int count,
-			boolean isToMax) {
-		if (isToMax)
-			Arrays.sort(mvArray, 0, count - 1, Collections.reverseOrder());
-		else
-			Arrays.sort(mvArray, 0, count - 1);
-	}
-	
-	private void undoMove (ClobberState board, ScoredClobberMove mv) {
-		board.board[mv.row1][mv.col1] = board.board[mv.row2][mv.col2];
-		board.board[mv.row2][mv.col2] = board.board[mv.row2][mv.col2] == ClobberState.homeSym
-										? ClobberState.awaySym : ClobberState.homeSym;
-		board.numMoves--;
-		board.status = GameState.Status.GAME_ON;
-		board.togglePlayer();
-	}
-	
-	private int addValidMove (ClobberState board, ScoredClobberMove mv, 
-							   ScoredClobberMove[] mvArray, int index) {
-		if (board.moveOK(mv)) {
-			board.makeMove(mv);
-			mv.set(evalBoard(board));
-			undoMove(board, mv);
-			mvArray[index] = mv;
-			return index+1;
-		}
-		return index;
-	}
-	
-	private int createMoveArray(ClobberState board, ScoredClobberMove[] moveArray) {
-		
-		int moveCount = 0;
-		for (int r = 0; r < ClobberState.ROWS; r++) {
-			for (int c = 0; c < ClobberState.COLS; c++) {
-				ScoredClobberMove moveUp = new ScoredClobberMove(r,c,r+1,c);
-				ScoredClobberMove moveDown = new ScoredClobberMove(r,c,r-1,c);
-				ScoredClobberMove moveLeft = new ScoredClobberMove(r,c,r,c-1);
-				ScoredClobberMove moveRight = new ScoredClobberMove(r,c,r,c+1);
-				moveCount = addValidMove(board, moveUp, moveArray, moveCount);
-				moveCount = addValidMove(board, moveDown, moveArray, moveCount);
-				moveCount = addValidMove(board, moveLeft, moveArray, moveCount);
-				moveCount = addValidMove(board, moveRight, moveArray, moveCount);
-			}
-		}
-		return moveCount;
-	}
 	
 	private void alphaBeta(ClobberState board, int currDepth, double alpha, double beta) {
 
 		boolean toMaximize = (board.getWho() == GameState.Who.HOME);
+		boolean toMinimize = !toMaximize;
+
 		boolean isTerminal = terminalValue(board, mvStack[currDepth]);
 		
 		if (isTerminal) {
@@ -419,58 +203,127 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 		} else if (currDepth == depthLimit) {
 			mvStack[currDepth].set(evalBoard(board));
 		} else {
-			ScoredClobberMove nextMove = mvStack[currDepth+1];
-			ScoredClobberMove bestMove = mvStack[currDepth];
 			double bestScore = (toMaximize ? 
 					Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY);
+			ScoredClobberMove bestMove = mvStack[currDepth];
+			ScoredClobberMove nextMove = mvStack[currDepth+1];
+
 			bestMove.set(bestScore);
-			
-			// Create a move array with one level down forward checking
-			ScoredClobberMove[] mvArray = new ScoredClobberMove
-					[ClobberState.ROWS*ClobberState.COLS*2-board.numMoves*2];
-			int moveCount = createMoveArray(board, mvArray);
-			reOrder(mvArray, moveCount, toMaximize);
+			GameState.Who currTurn = board.getWho();
 
-			// Performance evaluation use
-			if (currDepth == 0)
-				System.out.println("Total moves possible: " + moveCount);
-			maxDepthReached = Math.max(currDepth, maxDepthReached);
-					
-			// Prune last 10%, can be risky
-			//if (directPrune)
-			//	moveCount = moveCount*9/10;
-			for (int i = 0; i < moveCount; i++) {
-				ScoredClobberMove mv = mvArray[i];
-				board.makeMove(mv);
-				/*
-				int hashKey = 0;
-				for (int r = 0; r < ClobberState.ROWS; r++) {
-					for (int c = 0; c < ClobberState.COLS; c++) {
-						int who = board.board[r][c] == ClobberState.homeSym?1:0;
-						hashKey ^= keyTable[who][r][c];  
+			ScoredClobberMove[] moveArray 
+				= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
+			int moveCount = 0;
+			for (int r=0; r<ClobberState.ROWS; r++) {
+				for (int c = 0; c < ClobberState.COLS; c++) {
+					ScoredClobberMove moveUp = new ScoredClobberMove(r,c,r+1,c,0);
+					if (board.moveOK(moveUp)) {
+						moveArray[moveCount] = moveUp;
+						moveCount++;
 					}
+					ScoredClobberMove moveDown = new ScoredClobberMove(r,c,r-1,c,0);
+					if (board.moveOK(moveDown)) {
+						moveArray[moveCount] = moveDown;
+						moveCount++;					
+					}
+					ScoredClobberMove moveLeft = new ScoredClobberMove(r,c,r,c-1,0);
+					if (board.moveOK(moveLeft)) {
+						moveArray[moveCount] = moveLeft;
+						moveCount++;					
+					}
+					ScoredClobberMove moveRight = new ScoredClobberMove(r,c,r,c+1,0);
+					if (board.moveOK(moveRight)) {
+						moveArray[moveCount] = moveRight;
+						moveCount++;	
+					}			
 				}
-				TransTable.put(hashKey, board.board);
-				*/
-				alphaBeta(board, currDepth + 1, alpha, beta); // Check out move
-				undoMove(board, mv);
+			}
+			shuffle(moveArray, moveCount);
+					
+			
+			for (int i = 0; i < moveCount; i++) {
+				ScoredClobberMove mv = moveArray[i];
+				boolean moveOK = board.makeMove(mv);
+				if (!moveOK)
+					System.out.println("wtf");
 
-				// Check out the results, update Max/Min nodes
-				if (toMaximize && nextMove.score > bestMove.score)
-					bestMove.set(mv, nextMove.score);
-				else if (!toMaximize && nextMove.score < bestMove.score)
-					bestMove.set(mv, nextMove.score);
+				alphaBeta(board, currDepth + 1, alpha, beta); // Check out move
+
+				// Undo move
+				board.board[mv.row1][mv.col1] = board.board[mv.row2][mv.col2];
+				board.board[mv.row2][mv.col2] = board.board[mv.row2][mv.col2] == ClobberState.homeSym
+												? ClobberState.awaySym : ClobberState.homeSym;
+				board.numMoves--;
+				board.status = GameState.Status.GAME_ON;
+				board.who = currTurn;
+
+				// Check out the results, relative to what we've seen before
+				if (toMaximize && nextMove.score > bestMove.score) {
+					bestMove = mv;
+					bestMove.set(nextMove.score);
+					mvStack[currDepth] = bestMove;//??????
+				} else if (!toMaximize && nextMove.score < bestMove.score) {
+					bestMove = mv;
+					bestMove.set(nextMove.score);
+					mvStack[currDepth] = bestMove;//??????
+				}
 
 				// Update alpha and beta. Perform pruning, if possible.
-				if (toMaximize) {
-					alpha = Math.max(bestMove.score, alpha);
-					if (bestMove.score >= beta || bestMove.score == MAX_SCORE)
-						return;
-				} else {
+				if (toMinimize) {
 					beta = Math.min(bestMove.score, beta);
-					if (bestMove.score <= alpha || bestMove.score == -MAX_SCORE)
+					if (bestMove.score <= alpha || bestMove.score == -MAX_SCORE) {
 						return;
+					}
+				} else {
+					alpha = Math.max(bestMove.score, alpha);
+					if (bestMove.score >= beta || bestMove.score == MAX_SCORE) {
+						return;
+					}
 				}
+			}
+		}
+
+	}
+	
+	private void expandNode(ClobberState board) {
+		ScoredClobberMove[] moveArray 
+		= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
+		
+		int moveCount = 0;
+		for (int r=0; r<ClobberState.ROWS; r++) {
+			for (int c = 0; c < ClobberState.COLS; c++) {
+				ScoredClobberMove moveUp = new ScoredClobberMove(r,c,r+1,c,0);
+				if (board.moveOK(moveUp)) {
+					moveArray[moveCount] = moveUp;
+					moveCount++;
+				}
+				ScoredClobberMove moveDown = new ScoredClobberMove(r,c,r-1,c,0);
+				if (board.moveOK(moveDown)) {
+					moveArray[moveCount] = moveDown;
+					moveCount++;					
+				}
+				ScoredClobberMove moveLeft = new ScoredClobberMove(r,c,r,c-1,0);
+				if (board.moveOK(moveLeft)) {
+					moveArray[moveCount] = moveLeft;
+					moveCount++;					
+				}
+				ScoredClobberMove moveRight = new ScoredClobberMove(r,c,r,c+1,0);
+				if (board.moveOK(moveRight)) {
+					moveArray[moveCount] = moveRight;
+					moveCount++;	
+				}			
+			}
+		}
+		shuffle(moveArray, moveCount);
+		
+		for(ScoredClobberMove mv: moveArray) {
+			ClobberState newBoard = (ClobberState) board.clone();
+			boolean okMove = newBoard.makeMove(mv);
+			
+			if(okMove) {
+				states.add(newBoard);
+			} else {
+				System.err.println("Bad move in expandNode");
 			}
 		}
 	}
@@ -478,7 +331,101 @@ public class AlphaBetaClobberPlayer extends GamePlayer {
 	public static void main(String [] args)
 	{
 		GamePlayer p = new AlphaBetaClobberPlayer("Alpha-Beta");
-		p.compete(args);
+		p.compete(args, 1);
+		/*
+		p.init();
+		CLobberState state = new ClobberState();
+		state.makeMove(new Connect4Move(3));
+		state.makeMove(new Connect4Move(4));
+		state.makeMove(new Connect4Move(4));
+		state.makeMove(new Connect4Move(5));
+		GameMove mv = p.getMove(state, "");
+		System.out.println("Original board");
+		System.out.println(state.toString());
+		System.out.println("Move: " + mv.toString());
+		System.out.println("Board after move");
+		state.makeMove(mv);
+		System.out.println(state.toString());
+		 */
+	}
+
+	public void run() {
+		while(okToRun()) {
+			if(fresh) {
+				alphaBeta((ClobberState)super.gameState, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+				bestState = (ClobberState)this.gameState;
+				fresh = false;
+			} else {
+				ClobberState checkMe;
+				synchronized(states) {
+					checkMe = states.get(stateIndex);
+					stateIndex++;
+				}
+				alphaBeta(checkMe, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+				bestState = compareStates();
+			}
+		}
+	}
+	
+	private boolean okToRun() {
+		boolean go;
+		synchronized(states) {
+			if (stateIndex < states.size() - 1)
+				go = true;
+			else
+				go = false;
+		}
+		return go;
+	}
+	
+	private ClobberState compareStates()  {
+		int current = evalBoard(this.bestState); //Best state found so far by this thread
+		int other = evalBoard((ClobberState)super.gameState); //State found by most recent alphabeta
+		if(current > other)
+			return (ClobberState)super.gameState;
+		else {
+			return this.bestState;
+		}
+	} 
+	
+	private static int getBestState() {
+		int[] best = new int[2]; //[0] is best score, [1] is threadId
+		best[0] = -1;
+		best[1] = -1;
+		for(AlphaBetaClobberPlayer p: players) {
+			int score = evalBoard(p.bestState);
+			if(score > best[0]) {
+				best[0] = score;
+				best[1] = p.threadId;
+			}
+		}
+		return best[1];
+	}
+	
+	public static void clearThreads() {
+		players.clear();
+		threadPool.clear();
+		states.clear();
+		bestThread = -1;
+	}
+	
+	public static void runThreads(ClobberState gs) throws InterruptedException {
+		clearThreads();
+		for(int i=0; i<numCores; i++) {
+			players.add(new AlphaBetaClobberPlayer("Alpha-Beta", states.get(i), i, true));
+		}
+		
+		for(GamePlayer p: players) {
+			threadPool.add(new Thread((Runnable) p));
+		}
+		for(Thread t: threadPool) {
+			t.start();
+		}
+		for(Thread t: threadPool) {
+			t.join();
+		}
+		bestThread = getBestState();
+
 	}
 
 }
