@@ -1,0 +1,17 @@
+Alpha-Beta (W) played 0 2 1 2
+RWRWR
+WRWRW
+RWRWR
+WRWRW
+RWWWR
+WR.RW
+[AWAY 1 GAME_ON]
+Random+ (R) played 5 0 4 0
+.WRWR
+RRWRW
+RWRWR
+WRWRW
+RWWWR
+WR.RW
+[HOME 2 GAME_ON]
+Random+ won. Alpha-Beta DQd

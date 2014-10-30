@@ -1,0 +1,25 @@
+Random+ (W) played 1 3 2 3
+RWRWR
+WRWRW
+RWRWR
+WRWWW
+RWR.R
+WRWRW
+[AWAY 1 GAME_ON]
+Alpha-Beta (R) played 3 4 3 3
+RWRWR
+WRWRW
+RWRR.
+WRWWW
+RWR.R
+WRWRW
+[HOME 2 GAME_ON]
+Random+ (W) played 1 1 2 1
+RWRWR
+WRWRW
+RWRR.
+WWWWW
+R.R.R
+WRWRW
+[AWAY 3 GAME_ON]
+Random+ won. Alpha-Beta DQd

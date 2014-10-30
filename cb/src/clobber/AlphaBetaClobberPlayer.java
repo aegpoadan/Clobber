@@ -61,6 +61,7 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	public AlphaBetaClobberPlayer(String n, GameState gs, int threadId, boolean fresh) {
 		super(n, gs, false);
 		this.threadId = threadId;
+		this.fresh = fresh;
 	}
 	
 	@SuppressWarnings("finally")
