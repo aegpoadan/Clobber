@@ -1,9 +1,0 @@
-HUMAN (W) played 2 2 1 2
-RWRWR
-WRWRW
-RWRWR
-WR.RW
-RWWWR
-WRWRW
-[AWAY 1 GAME_ON]
-HUMAN won. Alpha-Beta made bad move 0 0 0 0

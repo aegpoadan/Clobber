@@ -1,9 +1,0 @@
-Random+ (W) played 4 0 5 0
-WWRWR
-.RWRW
-RWRWR
-WRWRW
-RWRWR
-WRWRW
-[AWAY 1 GAME_ON]
-Random+ won. Alpha-Beta DQd

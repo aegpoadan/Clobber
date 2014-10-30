@@ -57,16 +57,19 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		super(n, new ClobberState(), false);
 	}
 	
-	//When multi-threading, each thread needs its own gameState
-	public AlphaBetaClobberPlayer(String n, GameState gs, int threadId, boolean fresh) {
+	//When multi-threading, each thread needs its own gameState and mvStack
+	public AlphaBetaClobberPlayer(String n, GameState gs, ScoredClobberMove[] mvStack, int threadId, boolean fresh) {
 		super(n, gs, false);
 		this.threadId = threadId;
 		this.fresh = fresh;
+		this.mvStack = mvStack;
 	}
 	
 	@SuppressWarnings("finally")
 	@Override
 	public GameMove getMove(GameState state, String lastMv) {
+		ArrayList<AlphaBetaClobberPlayer> z = players;
+		clearThreads();
 		if (multiThreaded) {
 			expandNode((ClobberState)state);
 			try {
@@ -75,19 +78,16 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 				return players.get(bestThread).mvStack[0];
 			} catch (InterruptedException e) {
 				System.err.println("A thread was interrupted!");
-				e.printStackTrace();
-			} finally { //If multi-threading fails, do serial version
-				System.err.println("Error running multi-threaded version! Running serial instead");
+				System.err.println("Error running multi-threaded version!");
 				clearThreads();
-				alphaBeta((ClobberState)state, 0, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY);
-				System.out.println(mvStack[0].score);
-				return mvStack[0];
-			}
+				e.printStackTrace();
+			} 
 		} else {
 			alphaBeta((ClobberState)state, 0, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY);
 			System.out.println(mvStack[0].score);
 			return mvStack[0];
 		}
+		return null;
 	}
 	
 	private static boolean hasPawn(ClobberState board, char who,
@@ -196,7 +196,6 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 
 		boolean toMaximize = (board.getWho() == GameState.Who.HOME);
 		boolean toMinimize = !toMaximize;
-
 		boolean isTerminal = terminalValue(board, mvStack[currDepth]);
 		
 		if (isTerminal) {
@@ -317,10 +316,10 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		}
 		shuffle(moveArray, moveCount);
 		
-		for(ScoredClobberMove mv: moveArray) {
+		for(int i=0; i<moveCount; i++) {
 			ClobberState newBoard = (ClobberState) board.clone();
-			boolean okMove = newBoard.makeMove(mv);
-			
+			boolean okMove = newBoard.makeMove(moveArray[i]);
+			ArrayList z = states;
 			if(okMove) {
 				states.add(newBoard);
 			} else {
@@ -332,6 +331,8 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	public static void main(String [] args)
 	{
 		GamePlayer p = new AlphaBetaClobberPlayer("Alpha-Beta");
+		//ClobberState state = new ClobberState();
+		//p.getMove(state, "--");
 		p.compete(args, 1);
 		/*
 		p.init();
@@ -351,6 +352,7 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	}
 
 	public void run() {
+		this.init();
 		while(okToRun()) {
 			if(fresh) {
 				alphaBeta((ClobberState)super.gameState, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
@@ -393,6 +395,7 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		int[] best = new int[2]; //[0] is best score, [1] is threadId
 		best[0] = -1;
 		best[1] = -1;
+		ArrayList z = players;
 		for(AlphaBetaClobberPlayer p: players) {
 			int score = evalBoard(p.bestState);
 			if(score > best[0]) {
@@ -411,9 +414,10 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	}
 	
 	public static void runThreads(ClobberState gs) throws InterruptedException {
-		clearThreads();
+		ArrayList x = players;
 		for(int i=0; i<numCores; i++) {
-			players.add(new AlphaBetaClobberPlayer("Alpha-Beta", states.get(i), i, true));
+			AlphaBetaClobberPlayer z = new AlphaBetaClobberPlayer("Alpha-Beta", states.get(i), null, i, true);
+			players.add(z);
 		}
 		
 		for(GamePlayer p: players) {
