@@ -1,6 +1,8 @@
 package clobber;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 
 import game.*;
 
@@ -15,11 +17,29 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	private static int stateIndex;
 	private static int bestThread;
 	private static boolean multiThreaded = true;
+	private ScoredClobberMove[] bestMVStack;
 
-	public class ScoredClobberMove extends ClobberMove {
+	public class ScoredClobberMove extends ClobberMove 
+	 implements Comparable<ScoredClobberMove> {
+
+		public double score;
+		
+		public int compareTo(ScoredClobberMove mv) {
+			// TODO Auto-generated method stub
+			double diff = this.score - mv.score;
+			if (diff > 0) {
+				return 1;
+			} else if (diff < 0) {
+				return -1;
+			} else {
+				return 0;
+			}
+		}
+		
 		public ScoredClobberMove() {
 			super();
 		}
+		
 		public ScoredClobberMove(int r1, int c1, int r2, int c2, double s) {
 			row1 = r1;
 			col1 = c1;
@@ -27,24 +47,27 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 			col2 = c2;
 			score = s;
 		}
-		
-		public ScoredClobberMove(ScoredClobberMove m)
-		{
-			super(m.row1, m.col1, m.row2, m.col2);
-			score = m.score;
-		}
-		public void set(int r1, int c1, int r2, int c2, double s)
-		{
+		public ScoredClobberMove(int r1, int c1, int r2, int c2) {
 			row1 = r1;
 			col1 = c1;
 			row2 = r2;
 			col2 = c2;
+		}
+		public ScoredClobberMove(ScoredClobberMove m) {
+			super(m.row1, m.col1, m.row2, m.col2);
+			score = m.score;
+		}
+		
+		public void set(ClobberMove mv, double s) {
+			row1 = mv.row1;
+			col1 = mv.col1;
+			row2 = mv.row2;
+			col2 = mv.col2;
 			score = s;
 		}
 		public void set(double s) {
 			score = s;
 		}
-		public double score;
 	}
 
 	//hardcode
@@ -58,14 +81,12 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	}
 	
 	//When multi-threading, each thread needs its own gameState and mvStack
-	public AlphaBetaClobberPlayer(String n, GameState gs, ScoredClobberMove[] mvStack, int threadId, boolean fresh) {
+	public AlphaBetaClobberPlayer(String n, GameState gs, int threadId, boolean fresh) {
 		super(n, gs, false);
 		this.threadId = threadId;
 		this.fresh = fresh;
-		this.mvStack = mvStack;
 	}
 	
-	@SuppressWarnings("finally")
 	@Override
 	public GameMove getMove(GameState state, String lastMv) {
 		ArrayList<AlphaBetaClobberPlayer> z = players;
@@ -73,9 +94,9 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		if (multiThreaded) {
 			expandNode((ClobberState)state);
 			try {
-				runThreads((ClobberState)state);
-				System.out.println(players.get(bestThread).mvStack[0].score);
-				return players.get(bestThread).mvStack[0];
+				runThreads();
+				System.out.println(players.get(bestThread).bestMVStack[0].score);
+				return players.get(bestThread).bestMVStack[0];
 			} catch (InterruptedException e) {
 				System.err.println("A thread was interrupted!");
 				System.err.println("Error running multi-threaded version!");
@@ -90,8 +111,14 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		return null;
 	}
 	
-	private static boolean hasPawn(ClobberState board, char who,
-										 int r, int c) {
+	private static void reOrder(ScoredClobberMove[] mvArray, int count, boolean isToMax) {
+		if (isToMax)
+			Arrays.sort(mvArray, 0, count - 1, Collections.reverseOrder());
+		else
+			Arrays.sort(mvArray, 0, count - 1);
+	}
+	
+	private static boolean hasPawn(ClobberState board, char who, int r, int c) {
 		if (Util.inrange(r, ClobberState.ROWS-1) && Util.inrange(c, ClobberState.COLS-1)) {
 			if (board.board[r][c] == who) {
 				return true;
@@ -191,136 +218,121 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		}
 	}
 
-	
-	private void alphaBeta(ClobberState board, int currDepth, double alpha, double beta) {
-
-		boolean toMaximize = (board.getWho() == GameState.Who.HOME);
-		boolean toMinimize = !toMaximize;
-		boolean isTerminal = terminalValue(board, mvStack[currDepth]);
+	private int createMoveArray(ClobberState board, ScoredClobberMove[] moveArray) {
 		
-		if (isTerminal) {
-			;
-		} else if (currDepth == depthLimit) {
-			mvStack[currDepth].set(evalBoard(board));
-		} else {
-			double bestScore = (toMaximize ? 
-					Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY);
-			ScoredClobberMove bestMove = mvStack[currDepth];
-			ScoredClobberMove nextMove = mvStack[currDepth+1];
-
-			bestMove.set(bestScore);
-			GameState.Who currTurn = board.getWho();
-
-			ScoredClobberMove[] moveArray 
-				= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
-			int moveCount = 0;
-			for (int r=0; r<ClobberState.ROWS; r++) {
-				for (int c = 0; c < ClobberState.COLS; c++) {
-					ScoredClobberMove moveUp = new ScoredClobberMove(r,c,r+1,c,0);
-					if (board.moveOK(moveUp)) {
-						moveArray[moveCount] = moveUp;
-						moveCount++;
-					}
-					ScoredClobberMove moveDown = new ScoredClobberMove(r,c,r-1,c,0);
-					if (board.moveOK(moveDown)) {
-						moveArray[moveCount] = moveDown;
-						moveCount++;					
-					}
-					ScoredClobberMove moveLeft = new ScoredClobberMove(r,c,r,c-1,0);
-					if (board.moveOK(moveLeft)) {
-						moveArray[moveCount] = moveLeft;
-						moveCount++;					
-					}
-					ScoredClobberMove moveRight = new ScoredClobberMove(r,c,r,c+1,0);
-					if (board.moveOK(moveRight)) {
-						moveArray[moveCount] = moveRight;
-						moveCount++;	
-					}			
-				}
+		int moveCount = 0;
+		for (int r = 0; r < ClobberState.ROWS; r++) {
+			for (int c = 0; c < ClobberState.COLS; c++) {
+				ScoredClobberMove moveUp = new ScoredClobberMove(r, c, r + 1, c);
+				ScoredClobberMove moveDown = new ScoredClobberMove(r, c, r - 1,
+						c);
+				ScoredClobberMove moveLeft = new ScoredClobberMove(r, c, r,
+						c - 1);
+				ScoredClobberMove moveRight = new ScoredClobberMove(r, c, r,
+						c + 1);
+				moveCount = addValidMove(board, moveUp, moveArray, moveCount);
+				moveCount = addValidMove(board, moveDown, moveArray, moveCount);
+				moveCount = addValidMove(board, moveLeft, moveArray, moveCount);
+				moveCount = addValidMove(board, moveRight, moveArray, moveCount);
 			}
-			shuffle(moveArray, moveCount);
-					
-			
-			for (int i = 0; i < moveCount; i++) {
-				ScoredClobberMove mv = moveArray[i];
-				boolean moveOK = board.makeMove(mv);
-				if (!moveOK)
-					System.out.println("wtf");
+		}
+		return moveCount;
+	}
+	
+	private int addValidMove (ClobberState board, ScoredClobberMove mv, ScoredClobberMove[] mvArray, int index) {
+		if (board.moveOK(mv)) {
+			board.makeMove(mv);
+			mv.set(evalBoard(board));
+			undoMove(board, mv);
+			mvArray[index] = mv;
+			return index+1;
+		}
+		return index;
+	}
+	
+	private void undoMove (ClobberState board, ScoredClobberMove mv) {
+		board.board[mv.row1][mv.col1] = board.board[mv.row2][mv.col2];
+		board.board[mv.row2][mv.col2] = board.board[mv.row2][mv.col2] == ClobberState.homeSym
+										? ClobberState.awaySym : ClobberState.homeSym;
+		board.numMoves--;
+		board.status = GameState.Status.GAME_ON;
+		board.togglePlayer();
+	}
+	
+private void alphaBeta(ClobberState board, int currDepth, double alpha, double beta) {
 
-				alphaBeta(board, currDepth + 1, alpha, beta); // Check out move
+	boolean toMaximize = (board.getWho() == GameState.Who.HOME);
+	boolean toMinimize = !toMaximize;
 
-				// Undo move
-				board.board[mv.row1][mv.col1] = board.board[mv.row2][mv.col2];
-				board.board[mv.row2][mv.col2] = board.board[mv.row2][mv.col2] == ClobberState.homeSym
-												? ClobberState.awaySym : ClobberState.homeSym;
-				board.numMoves--;
-				board.status = GameState.Status.GAME_ON;
-				board.who = currTurn;
+	boolean isTerminal = terminalValue(board, mvStack[currDepth]);
+	
+	if (isTerminal) {
+		;
+	} else if (currDepth == depthLimit) {
+		mvStack[currDepth].set(evalBoard(board));
+	} else {
+		ScoredClobberMove bestMove = mvStack[currDepth];
+		ScoredClobberMove nextMove = mvStack[currDepth+1];
+		double bestScore = (toMaximize ? 
+				Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY);
+		bestMove.set(bestScore);
 
-				// Check out the results, relative to what we've seen before
-				if (toMaximize && nextMove.score > bestMove.score) {
-					bestMove = mv;
-					bestMove.set(nextMove.score);
-					mvStack[currDepth] = bestMove;//??????
-				} else if (!toMaximize && nextMove.score < bestMove.score) {
-					bestMove = mv;
-					bestMove.set(nextMove.score);
-					mvStack[currDepth] = bestMove;//??????
+		ScoredClobberMove[] moveArray 
+			= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
+		int moveCount = createMoveArray(board, moveArray);
+		if(moveCount == 0) {
+			System.out.println("Board when moveCount is 0:\n" + board);
+		}
+		//shuffle(moveArray, moveCount);
+		reOrder(moveArray, moveCount, toMaximize);
+		
+		for (int i = 0; i < moveCount; i++) {
+			ScoredClobberMove mv = moveArray[i];
+			board.makeMove(mv);
+			alphaBeta(board, currDepth + 1, alpha, beta); // Check out move
+			undoMove(board, mv);
+
+			// Check out the results, relative to what we've seen before
+			if (toMaximize && nextMove.score > bestMove.score) {
+				bestMove.set(mv, nextMove.score);
+			} else if (!toMaximize && nextMove.score < bestMove.score) {
+				bestMove.set(mv, nextMove.score);
+			}
+
+			// Update alpha and beta. Perform pruning, if possible.
+			if (toMinimize) {
+				beta = Math.min(bestMove.score, beta);
+				if (bestMove.score <= alpha || bestMove.score == -MAX_SCORE) {
+					return;
 				}
-
-				// Update alpha and beta. Perform pruning, if possible.
-				if (toMinimize) {
-					beta = Math.min(bestMove.score, beta);
-					if (bestMove.score <= alpha || bestMove.score == -MAX_SCORE) {
-						return;
-					}
-				} else {
-					alpha = Math.max(bestMove.score, alpha);
-					if (bestMove.score >= beta || bestMove.score == MAX_SCORE) {
-						return;
-					}
+			} else {
+				alpha = Math.max(bestMove.score, alpha);
+				if (bestMove.score >= beta || bestMove.score == MAX_SCORE) {
+					return;
 				}
 			}
 		}
-
 	}
+
+}
+
+
 	
 	private void expandNode(ClobberState board) {
+		boolean toMaximize = (board.getWho() == GameState.Who.HOME);
 		ScoredClobberMove[] moveArray 
 		= new ScoredClobberMove[ClobberState.ROWS*ClobberState.COLS*2 - board.numMoves*2];
 		
-		int moveCount = 0;
-		for (int r=0; r<ClobberState.ROWS; r++) {
-			for (int c = 0; c < ClobberState.COLS; c++) {
-				ScoredClobberMove moveUp = new ScoredClobberMove(r,c,r+1,c,0);
-				if (board.moveOK(moveUp)) {
-					moveArray[moveCount] = moveUp;
-					moveCount++;
-				}
-				ScoredClobberMove moveDown = new ScoredClobberMove(r,c,r-1,c,0);
-				if (board.moveOK(moveDown)) {
-					moveArray[moveCount] = moveDown;
-					moveCount++;					
-				}
-				ScoredClobberMove moveLeft = new ScoredClobberMove(r,c,r,c-1,0);
-				if (board.moveOK(moveLeft)) {
-					moveArray[moveCount] = moveLeft;
-					moveCount++;					
-				}
-				ScoredClobberMove moveRight = new ScoredClobberMove(r,c,r,c+1,0);
-				if (board.moveOK(moveRight)) {
-					moveArray[moveCount] = moveRight;
-					moveCount++;	
-				}			
-			}
-		}
-		shuffle(moveArray, moveCount);
+		int moveCount = createMoveArray(board, moveArray);
+		//shuffle(moveArray, moveCount);
+		reOrder(moveArray, moveCount, toMaximize);
 		
 		for(int i=0; i<moveCount; i++) {
 			ClobberState newBoard = (ClobberState) board.clone();
 			boolean okMove = newBoard.makeMove(moveArray[i]);
 			ArrayList z = states;
 			if(okMove) {
+				newBoard.who = (newBoard.who == GameState.Who.HOME) ? GameState.Who.AWAY : GameState.Who.HOME;//Have to flip turn after root expansion
 				states.add(newBoard);
 			} else {
 				System.err.println("Bad move in expandNode");
@@ -331,9 +343,10 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 	public static void main(String [] args)
 	{
 		GamePlayer p = new AlphaBetaClobberPlayer("Alpha-Beta");
-		//ClobberState state = new ClobberState();
-		//p.getMove(state, "--");
-		p.compete(args, 1);
+		p.init();
+		ClobberState state = new ClobberState();
+		System.out.println(p.getMove(state, "--"));
+		//p.compete(args, 1);
 		/*
 		p.init();
 		CLobberState state = new ClobberState();
@@ -358,6 +371,8 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 				alphaBeta((ClobberState)super.gameState, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
 				bestState = (ClobberState)this.gameState;
 				fresh = false;
+				bestMVStack = this.mvStack;
+				resetMVStack();
 			} else {
 				ClobberState checkMe;
 				synchronized(states) {
@@ -366,6 +381,7 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 				}
 				alphaBeta(checkMe, 0, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
 				bestState = compareStates();
+				resetMVStack();
 			}
 		}
 	}
@@ -387,6 +403,7 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		if(current > other)
 			return (ClobberState)super.gameState;
 		else {
+			bestMVStack = this.mvStack;
 			return this.bestState;
 		}
 	} 
@@ -397,13 +414,21 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		best[1] = -1;
 		ArrayList z = players;
 		for(AlphaBetaClobberPlayer p: players) {
-			int score = evalBoard(p.bestState);
-			if(score > best[0]) {
-				best[0] = score;
-				best[1] = p.threadId;
+			if(p.bestState != null) {
+				int score = evalBoard(p.bestState);
+				if(score > best[0]) {
+					best[0] = score;
+					best[1] = p.threadId;
+				}
 			}
 		}
 		return best[1];
+	}
+	
+	private void resetMVStack() {
+		for (int i=0; i<MAX_DEPTH; i++) {
+			mvStack[i] = new ScoredClobberMove();
+		}
 	}
 	
 	public static void clearThreads() {
@@ -413,10 +438,10 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 		bestThread = -1;
 	}
 	
-	public static void runThreads(ClobberState gs) throws InterruptedException {
+	public static void runThreads() throws InterruptedException {
 		ArrayList x = players;
 		for(int i=0; i<numCores; i++) {
-			AlphaBetaClobberPlayer z = new AlphaBetaClobberPlayer("Alpha-Beta", states.get(i), null, i, true);
+			AlphaBetaClobberPlayer z = new AlphaBetaClobberPlayer("Alpha-Beta", states.get(i), i, true);
 			players.add(z);
 		}
 		
@@ -430,7 +455,5 @@ public class AlphaBetaClobberPlayer extends GamePlayer implements Runnable {
 			t.join();
 		}
 		bestThread = getBestState();
-
 	}
-
 }
